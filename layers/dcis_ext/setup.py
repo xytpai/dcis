@@ -8,7 +8,8 @@ setup(
     ext_modules=[
         CUDAExtension(
             'dcis_ext_cuda', ['dcis_ext_cuda.cpp',
-            'peakdet_kernel.cu', 'sample2d_kernel.cu'],
+            'peakdet_kernel.cu', 'indexf2d_kernel.cu',
+            'indexf2d_kernel.cu'],
         )
     ],
     cmdclass={

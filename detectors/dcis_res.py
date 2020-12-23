@@ -96,8 +96,8 @@ class Detector(nn.Module):
                 label_reg_ctr_b[:, 0].unsqueeze(1).unsqueeze(1))*self.alpha + self.beta
             xs_b = (xs.unsqueeze(0).expand(n, ph, pw) - \
                 label_reg_ctr_b[:, 1].unsqueeze(1).unsqueeze(1))*self.alpha + self.beta
-            mask_y = dcis_sample2d(pred_y[b].sigmoid(), ys_b) # F(n, ph, pw)
-            mask_x = dcis_sample2d(pred_x[b].sigmoid(), xs_b) # F(n, ph, pw)
+            mask_y = indexf2d(pred_y[b].sigmoid(), ys_b) # F(n, ph, pw)
+            mask_x = indexf2d(pred_x[b].sigmoid(), xs_b) # F(n, ph, pw)
             pred_mask = mask_y*mask_x
             label_mask_b = F.interpolate(label_mask_b.unsqueeze(0), size=(ph, pw),
                 mode='bilinear', align_corners=True)[0]
@@ -137,9 +137,9 @@ class Detector(nn.Module):
             ctr_y.unsqueeze(1).unsqueeze(1))*self.alpha + self.beta
         xs_b = (xs.unsqueeze(0).expand(n, ph, pw) - \
             ctr_x.unsqueeze(1).unsqueeze(1))*self.alpha + self.beta
-        # TODO: sample2d
-        mask_y = sample2d(pred_y[0].sigmoid(), ys_b) # F(n, ph, pw)
-        mask_x = sample2d(pred_x[0].sigmoid(), xs_b) # F(n, ph, pw)
+        # ---
+        mask_y = indexf2d(pred_y[0].sigmoid(), ys_b) # F(n, ph, pw)
+        mask_x = indexf2d(pred_x[0].sigmoid(), xs_b) # F(n, ph, pw)
         pred_mask = mask_y*mask_x
         pred_mask = F.interpolate(pred_mask.unsqueeze(0), size=(im_h, im_w),
             mode='bilinear', align_corners=True)

@@ -4,6 +4,8 @@ from .sigmoid_focal_loss import SigmoidFocalLoss, binary_focal_loss
 from .nms import box_nms, cluster_nms
 from .frozen_batchnorm import FrozenBatchNorm2d
 
+from .dcis_ext import peakdet, indexf2d, assign_centernet
+
 from .misc import make_conv3x3
 from .misc import make_fc
 from .misc import conv_with_kaiming_uniform
@@ -17,6 +19,10 @@ __all__ = [
     'box_nms',
     'cluster_nms',
     'FrozenBatchNorm2d',
+    
+    'peakdet',
+    'indexf2d',
+    'assign_centernet',
     
     'make_conv3x3',
     'make_fc',
