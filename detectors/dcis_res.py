@@ -8,73 +8,46 @@ from detectors.backbones import *
 from detectors.necks import *
 
 
-def _neg_loss(pred, gt):
-    pos_inds = gt.eq(1).float()
-    neg_inds = gt.lt(1).float()
-    neg_weights = torch.pow(1 - gt, 4)
-    loss = 0
-    pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds
-    neg_loss = torch.log(1 - pred) * torch.pow(pred, 2) * neg_weights * neg_inds
-    num_pos  = pos_inds.float().sum()
-    pos_loss = pos_loss.sum()
-    neg_loss = neg_loss.sum()
-    if num_pos == 0:
-        loss = loss - neg_loss
-    else:
-        loss = loss - (pos_loss + neg_loss) / num_pos
-    return loss
-
-def dice_loss(input, target):
-    input = input.contiguous().view(input.size()[0], -1)
-    target = target.contiguous().view(target.size()[0], -1).float()
-
-    a = torch.sum(input * target, 1)
-    b = torch.sum(input * input, 1) + 0.001
-    c = torch.sum(target * target, 1) + 0.001
-    d = (2 * a) / (b + c)
-    return (1-d).mean()
-
 class Detector(nn.Module):
     def __init__(self, cfg, mode='TEST'):
         super(Detector, self).__init__()
         self.cfg = cfg
         self.mode = mode
         self.register_buffer('trained_log', torch.zeros(2).long())
-        # ---
-        self.num_class    = self.cfg['DETECTOR']['NUM_CLASS']
-        self.alpha        = self.cfg['DETECTOR']['ALPHA']
-        self.beta         = self.cfg['DETECTOR']['BETA']
-        self.axis_range   = self.cfg['DETECTOR']['AXIS_RANGE']
-        self.numdets      = 100
-        # ---
-        self.backbone     = ResNet(self.cfg['DETECTOR']['DEPTH'], 
-                                use_dcn=self.cfg['DETECTOR']['USE_DCN'])
-        self.neck         = FPN(self.backbone.out_channels, 256)
-        # ---
+        self.num_class  = self.cfg['DETECTOR']['NUM_CLASS']
+        self.emb_size   = self.cfg['DETECTOR']['EMB_SIZE']
+        self.numdets    = self.cfg['DETECTOR']['NUMDETS']
+        self.backbone   = ResNet(self.cfg['DETECTOR']['DEPTH'], 
+                            use_dcn=self.cfg['DETECTOR']['USE_DCN'])
+        self.neck       = FPN(self.backbone.out_channels, 256, 
+                            top_mode=None)
         if self.mode == 'TRAIN' and self.cfg['TRAIN']['PRETRAINED']:
             self.backbone.load_pretrained_params()
-        # conv_out
+        # head
         self.conv_emb = nn.Sequential(
-            nn.Conv2d(256 + 2, 128, kernel_size=3, padding=1), 
+            nn.Conv2d(256 + 2, 256, kernel_size=3, padding=1), 
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1), 
+            nn.Conv2d(256, 256, kernel_size=3, padding=1), 
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1), 
+            nn.Conv2d(256, 256, kernel_size=3, padding=1), 
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1), 
             nn.ReLU(inplace=True))
-        self.conv_out = nn.Conv2d(128, 
-            self.num_class + self.axis_range*2, 
-            kernel_size=1, padding=0)
-        self.conv_mask = nn.Sequential(
-            nn.Conv2d(self.axis_range, self.axis_range, kernel_size=3, padding=1), 
-            nn.ReLU(inplace=True),
-            nn.Conv2d(self.axis_range, 1, kernel_size=3, padding=1), 
-        )
+        self.conv_cls = nn.Conv2d(256, self.num_class, kernel_size=3, padding=1)
+        self.conv_key = nn.Conv2d(256, self.emb_size, kernel_size=3, padding=1)
+        self.conv_val = nn.Conv2d(256, self.emb_size, kernel_size=3, padding=1)
+        # init conv_cls
         pi = 0.01
         _bias = -math.log((1.0-pi)/pi)
-        nn.init.constant_(self.conv_out.bias, _bias)
+        nn.init.constant_(self.conv_cls.bias, _bias)
+        # metric
+        self.conv_metric = nn.Sequential(
+            nn.Conv2d(self.emb_size, self.emb_size, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(self.emb_size, 1, kernel_size=3, padding=1))
         # loss_func
-        self.loss_func_cls = _neg_loss # nn.BCELoss(reduction='mean')
-        self.loss_func_mask = dice_loss # nn.BCELoss(reduction='mean')
+        self.loss_func_cls = neg_loss
+        self.loss_func_mask = dice_loss
         
     def forward(self, imgs, locations, label_cls=None, label_reg=None, label_mask=None):
         '''
@@ -84,28 +57,31 @@ class Detector(nn.Module):
         label_reg:  F(b, n, 4)    yxyx
         '''
         batch_size, _, im_h, im_w = imgs.shape
-        bottom = self.neck(self.backbone(imgs))[0] # F(b, c, ph/2, pw/2)
+        res = self.neck(self.backbone(imgs))
+        bottom = res[0] + res[1] + res[2]
+        _, _, bh, bw = bottom.shape
+        # compute coord
         ys, xs = torch.meshgrid(
-            torch.arange(bottom.shape[2], device=bottom.device), 
-            torch.arange(bottom.shape[3], device=bottom.device))
-        ys = ys.float()/bottom.shape[2]*2.0-1.0
-        xs = xs.float()/bottom.shape[3]*2.0-1.0
-        coord = torch.stack([ys, xs]).unsqueeze(0).expand(batch_size, 2, bottom.shape[2], bottom.shape[3])
+            torch.arange(bh, device=bottom.device), 
+            torch.arange(bw, device=bottom.device))
+        ys = ys.float() / bh * 2.0 - 1.0
+        xs = xs.float() / bw * 2.0 - 1.0
+        coord = torch.stack([ys, xs]).unsqueeze(0).expand(batch_size, 2, bh, bw)
         bottom = torch.cat([bottom, coord], dim=1)
         bottom = self.conv_emb(bottom)
-        _, _, h_, w_ = bottom.shape
-        bottom = F.interpolate(bottom, size=((h_-1)*2+1, (w_-1)*2+1), 
+        _, _, bh, bw = bottom.shape
+        bottom = F.interpolate(bottom, size=((bh-1)*2+1, (bw-1)*2+1), 
             mode='bilinear', align_corners=True)
-        bottom = self.conv_out(bottom)
-        pred_cls, pred_y, pred_x = bottom.split(
-            [self.num_class, self.axis_range, self.axis_range], dim=1)
+        pred_cls = self.conv_cls(bottom)
+        pred_key = self.conv_key(bottom)
+        pred_val = self.conv_val(bottom)
         if label_cls is not None:
-            return self._loss(locations, pred_cls, pred_y, pred_x, im_h, im_w, 
+            return self._loss(locations, pred_cls, pred_key, pred_val, im_h, im_w, 
                 label_cls, label_reg, label_mask)
         else:
-            return self._pred(locations, pred_cls, pred_y, pred_x, im_h, im_w)
+            return self._pred(locations, pred_cls, pred_key, pred_val, im_h, im_w)
     
-    def _loss(self, locations, pred_cls, pred_y, pred_x, im_h, im_w, 
+    def _loss(self, locations, pred_cls, pred_key, pred_val, im_h, im_w, 
                 label_cls, label_reg, label_mask):
         loss = []
         batch_size, _, ph, pw = pred_cls.shape
@@ -129,12 +105,15 @@ class Detector(nn.Module):
             loss_cls = self.loss_func_cls(pred_cls[b].view(-1).sigmoid(), 
                 target.view(-1)).view(1)
             # loss_mask
-            ctr = (label_reg_ctr_b[:, :]/stride).long() # L(n,2)
-            idxs = ctr[:,0]*pw+ctr[:,1]
-            emb = pred_x[b].permute(1,2,0).contiguous() # F(ph,pw,c)
-            ft = emb.view(ph*pw,-1)[idxs] # F(n,c)
-            pred_mask = (ft.view(n,1,1,32) - emb.view(1,ph,pw,32)).abs() # F(n,ph,pw,c)
-            pred_mask = self.conv_mask(pred_mask.permute(0,3,1,2).contiguous())[:, 0].sigmoid()
+            ctr = (label_reg_ctr_b[:, :]/stride).long() # L(n, 2)
+            idxs = ctr[:,0] * pw + ctr[:,1] # L(n)
+            key = pred_key[b].permute(1,2,0).contiguous() # F(ph, pw, c)
+            val = pred_val[b].permute(1,2,0).contiguous() # F(ph, pw, c)
+            key = key.view(ph*pw, -1)[idxs] # F(n, c)
+            pred_mask = (key.view(n, 1, 1, self.emb_size) - \
+                val.view(1, ph, pw, self.emb_size)).abs() # F(n, ph, pw, c)
+            pred_mask = self.conv_metric(pred_mask.permute(0, 3, 1, 2).contiguous() \
+                )[:, 0].sigmoid()
             label_mask_b = F.interpolate(label_mask_b.unsqueeze(0), size=(ph, pw),
                 mode='bilinear', align_corners=True)[0]
             loss_mask = self.loss_func_mask(pred_mask, label_mask_b).view(1)
@@ -142,7 +121,7 @@ class Detector(nn.Module):
             loss.append(loss_cls + loss_mask)
         return torch.cat(loss)
 
-    def _pred(self, locations, pred_cls, pred_y, pred_x, im_h, im_w):
+    def _pred(self, locations, pred_cls, pred_key, pred_val, im_h, im_w):
         '''
         cls:   L(n)
         score: F(n)
@@ -153,14 +132,9 @@ class Detector(nn.Module):
         self.class_th     = self.cfg[self.mode]['CLASS_TH']
         batch_size, _, ph, pw = pred_cls.shape
         assert batch_size == 1
-        stride = (im_h-1)//(ph-1)
-        ys, xs = torch.meshgrid(
-            torch.arange(ph, device=pred_cls.device), 
-            torch.arange(pw, device=pred_cls.device)) # F(ph, pw)
-        # ---
+        # to class_idx, score
         pred_cls = pred_cls[0].sigmoid()
         pred_cls = peakdet(pred_cls)
-        # ---
         m = torch.where(pred_cls>=self.class_th, 
                 torch.ones_like(pred_cls), torch.zeros_like(pred_cls))
         m_posi = (m.max(dim=0)[0]).byte() # B(ph, pw)
@@ -169,22 +143,22 @@ class Detector(nn.Module):
         class_idx = class_idx[m_posi]
         class_idx = class_idx + 1 # L(n)
         n = class_idx.shape[0]
-        # ---
+        # to mask
+        stride = (im_h-1)//(ph-1)
+        ys, xs = torch.meshgrid(
+            torch.arange(ph, device=class_idx.device), 
+            torch.arange(pw, device=class_idx.device)) # F(ph, pw)
         ctr_ys = ys[m_posi]
         ctr_xs = xs[m_posi]
-        idxs = ctr_ys*pw+ctr_xs
-        emb = pred_x[0].permute(1,2,0).contiguous() # F(ph,pw,c)
-        ft = emb.view(ph*pw,-1)[idxs] # F(n,c)
-        pred_mask = (ft.view(n,1,1,32) - emb.view(1,ph,pw,32)).abs() # F(n,ph,pw,c)
-        pred_mask = self.conv_mask(pred_mask.permute(0,3,1,2).contiguous())[:, 0].sigmoid()
-
-        # import matplotlib.pyplot as plt 
-        # print(pred_mask.shape)
-        # x = pred_mask[5].cpu().numpy()
-        # plt.imshow(x)
-        # plt.savefig('xxx.jpg')
-        # raise
-
+        idxs = ctr_ys * pw + ctr_xs
+        key = pred_key[0].permute(1,2,0).contiguous() # F(ph, pw, c)
+        val = pred_val[0].permute(1,2,0).contiguous() # F(ph, pw, c)
+        key = key.view(ph*pw, -1)[idxs] # F(n, c)
+        pred_mask = (key.view(n, 1, 1, self.emb_size) - \
+            val.view(1, ph, pw, self.emb_size)).abs() # F(n, ph, pw, c)
+        pred_mask = self.conv_metric(pred_mask.permute(0,3,1,2).contiguous() \
+            )[:, 0].sigmoid()
+        # post
         pred_mask = F.interpolate(pred_mask.unsqueeze(0), size=(im_h, im_w),
             mode='bilinear', align_corners=True)
         valid_ymin, valid_xmin, valid_ymax, valid_xmax, ori_h, ori_w = \
@@ -196,5 +170,4 @@ class Detector(nn.Module):
         pred_mask = F.interpolate(pred_mask, size=(ori_h, ori_w), 
                     mode='bilinear', align_corners=True)[0]
         pred_mask = (pred_mask>=self.mask_th).float()
-        print(pred_mask.shape[0])
         return class_idx, score, pred_mask

@@ -6,7 +6,7 @@ from layers import *
 
 class FPN(nn.Module):
     def __init__(self, in_channels=[512,1024,2048], out_channel=256, 
-                            top_mode='LastLevelP6P7'):
+                            top_mode=None):
         super(FPN, self).__init__()
         if top_mode == 'LastLevelP6P7':
             self.top_blocks = LastLevelP6P7(out_channel, out_channel)

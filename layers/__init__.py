@@ -1,9 +1,7 @@
 import torch 
 
-from .sigmoid_focal_loss import SigmoidFocalLoss, binary_focal_loss
-from .nms import box_nms, cluster_nms
+from .losses import neg_loss, dice_loss
 from .frozen_batchnorm import FrozenBatchNorm2d
-
 from .dcis_ext import peakdet, assign_centernet
 
 from .misc import make_conv3x3
@@ -14,10 +12,9 @@ from .misc import to_onehot, torch_select, torch_cat
 
 
 __all__ = [
-    'SigmoidFocalLoss',
-    'binary_focal_loss',
-    'box_nms',
-    'cluster_nms',
+    'neg_loss',
+    'dice_loss',
+
     'FrozenBatchNorm2d',
     
     'peakdet',
