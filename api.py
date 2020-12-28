@@ -174,10 +174,5 @@ class Inferencer(object):
             img, location = self.dataset.transform_inference_img(img_pil)
             img = img.cuda()
             if self.task == 'segm':
-                pred_cls_i, pred_cls_p, pred_reg, pred_mask = self.detector(img, location)
-                return {'class':pred_cls_i.cpu(), 'score':pred_cls_p.cpu(), 
-                            'box':pred_reg.cpu(), 'mask':pred_mask.cpu()}
-            elif self.task == 'bbox': 
-                pred_cls_i, pred_cls_p, pred_reg = self.detector(img, location)
-                return {'class':pred_cls_i.cpu(), 'score':pred_cls_p.cpu(), 
-                            'box':pred_reg.cpu()}
+                pred_cls_i, pred_cls_p, pred_mask = self.detector(img, location)
+                return {'class':pred_cls_i.cpu(), 'score':pred_cls_p.cpu(), 'mask':pred_mask.cpu()}

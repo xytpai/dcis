@@ -166,22 +166,21 @@ def draw_bbox_text(drawObj, ymin, xmin, ymax, xmax, text, color, bd=1):
     drawObj.text((xmin+3, ymin), text)
 
 
-def show_instance(img, boxes, labels, masks=None, name_table=None, scores=None, 
+def show_instance(img, labels, masks, name_table=None, scores=None, 
                     file_name=None, matplotlib=False):
     '''
     img:      FloatTensor(3, H, W) or PIL
-    boxes:    FloatTensor(N, 4)
     labels:   LongTensor(N) 0:bg
     masks:    FloatTensor(N, H, W) or None
     scores:   FloatTensor(N) or None
     file_name: 'out.bmp' or None
     '''
-    if boxes.shape[0] == 0: return
+    n = labels.shape[0]
+    if n == 0: return
     if not isinstance(img, Image.Image):
         img = transforms.ToPILImage()(img)
     # sort
-    hw = boxes[:, 2:] - boxes[:, :2]
-    area = hw[:, 0] * hw[:, 1] # N
+    area = masks.view(n, -1).sum(dim=1)
     select = area.sort(descending=True)[1] # L(N)
     # blend mask
     if masks is not None:
@@ -197,20 +196,20 @@ def show_instance(img, boxes, labels, masks=None, name_table=None, scores=None,
         img_mask = transforms.ToPILImage()(img_mask)
         img = Image.blend(img, img_mask, 0.4)
     # draw bbox
-    drawObj = ImageDraw.Draw(img)
-    for i in range(select.shape[0]):
-        i = int(select[i])
-        lb = int(labels[i])
-        if lb > 0: # fg
-            box = boxes[i]
-            if scores is None:
-                draw_bbox_text(drawObj, box[0], box[1], box[2], box[3], name_table[lb],
-                    color=COLOR_TABLE[i])
-            else:
-                str_score = str(float(scores[i]))[:5]
-                str_out = name_table[lb] + ': ' + str_score
-                draw_bbox_text(drawObj, box[0], box[1], box[2], box[3], str_out, 
-                    color=COLOR_TABLE[i])
+    # drawObj = ImageDraw.Draw(img)
+    # for i in range(select.shape[0]):
+    #     i = int(select[i])
+    #     lb = int(labels[i])
+    #     if lb > 0: # fg
+    #         box = boxes[i]
+    #         if scores is None:
+    #             draw_bbox_text(drawObj, box[0], box[1], box[2], box[3], name_table[lb],
+    #                 color=COLOR_TABLE[i])
+    #         else:
+    #             str_score = str(float(scores[i]))[:5]
+    #             str_out = name_table[lb] + ': ' + str_score
+    #             draw_bbox_text(drawObj, box[0], box[1], box[2], box[3], str_out, 
+    #                 color=COLOR_TABLE[i])
     if file_name is not None:
         img.save(file_name)
     else:
@@ -218,3 +217,57 @@ def show_instance(img, boxes, labels, masks=None, name_table=None, scores=None,
             plt.imshow(img, aspect='equal')
             plt.show()
         else: img.show()
+
+
+# def show_instance(img, boxes, labels, masks=None, name_table=None, scores=None, 
+#                     file_name=None, matplotlib=False):
+#     '''
+#     img:      FloatTensor(3, H, W) or PIL
+#     boxes:    FloatTensor(N, 4)
+#     labels:   LongTensor(N) 0:bg
+#     masks:    FloatTensor(N, H, W) or None
+#     scores:   FloatTensor(N) or None
+#     file_name: 'out.bmp' or None
+#     '''
+#     if boxes.shape[0] == 0: return
+#     if not isinstance(img, Image.Image):
+#         img = transforms.ToPILImage()(img)
+#     # sort
+#     hw = boxes[:, 2:] - boxes[:, :2]
+#     area = hw[:, 0] * hw[:, 1] # N
+#     select = area.sort(descending=True)[1] # L(N)
+#     # blend mask
+#     if masks is not None:
+#         img_mask = torch.zeros(3, masks.shape[1], masks.shape[2])
+#         for i in range(select.shape[0]):
+#             i = int(select[i])
+#             m = masks[i] == 1 # H,W
+#             color = COLOR_TABLE[i]
+#             img_mask[0, m] = color[0]
+#             img_mask[1, m] = color[1]
+#             img_mask[2, m] = color[2]
+#         img_mask = img_mask / 257.0
+#         img_mask = transforms.ToPILImage()(img_mask)
+#         img = Image.blend(img, img_mask, 0.4)
+#     # draw bbox
+#     drawObj = ImageDraw.Draw(img)
+#     for i in range(select.shape[0]):
+#         i = int(select[i])
+#         lb = int(labels[i])
+#         if lb > 0: # fg
+#             box = boxes[i]
+#             if scores is None:
+#                 draw_bbox_text(drawObj, box[0], box[1], box[2], box[3], name_table[lb],
+#                     color=COLOR_TABLE[i])
+#             else:
+#                 str_score = str(float(scores[i]))[:5]
+#                 str_out = name_table[lb] + ': ' + str_score
+#                 draw_bbox_text(drawObj, box[0], box[1], box[2], box[3], str_out, 
+#                     color=COLOR_TABLE[i])
+#     if file_name is not None:
+#         img.save(file_name)
+#     else:
+#         if matplotlib:
+#             plt.imshow(img, aspect='equal')
+#             plt.show()
+#         else: img.show()

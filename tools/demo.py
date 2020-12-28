@@ -30,10 +30,6 @@ for filename in os.listdir(demo_dir):
         pred = inferencer.pred(img)
         name = demo_dir + '/pred_' + filename.split('.')[0]+'.jpg'
         if dataset.task == 'segm':
-            show_instance(img, pred['box'], pred['class'], pred['mask'], 
-                scores=pred['score'], name_table=dataset.name_table, 
-                file_name=name)
-        elif dataset.task == 'bbox':
-            show_instance(img, pred['box'], pred['class'], 
+            show_instance(img, pred['class'], pred['mask'], 
                 scores=pred['score'], name_table=dataset.name_table, 
                 file_name=name)
