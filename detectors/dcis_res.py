@@ -58,8 +58,12 @@ class Detector(nn.Module):
         '''
         batch_size, _, im_h, im_w = imgs.shape
         res = self.neck(self.backbone(imgs))
+        _, _, bh, bw = res[0].shape
+        res[1] = F.interpolate(res[1], size=(bh, bw), 
+            mode='bilinear', align_corners=True)
+        res[2] = F.interpolate(res[2], size=(bh, bw), 
+            mode='bilinear', align_corners=True)
         bottom = res[0] + res[1] + res[2]
-        _, _, bh, bw = bottom.shape
         # compute coord
         ys, xs = torch.meshgrid(
             torch.arange(bh, device=bottom.device), 
