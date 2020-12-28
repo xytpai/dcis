@@ -109,10 +109,10 @@ class Detector(nn.Module):
             loss_cls = self.loss_func_cls(pred_cls[b].view(-1).sigmoid(), 
                 target.view(-1)).view(1)
             # loss_mask
-            ctr = (label_reg_ctr_b[:, :]/stride).long() # L(n, 2)
-            idxs = ctr[:,0] * pw + ctr[:,1] # L(n)
-            key = pred_key[b].permute(1,2,0).contiguous() # F(ph, pw, c)
-            val = pred_val[b].permute(1,2,0).contiguous() # F(ph, pw, c)
+            ctr = (label_reg_ctr_b/stride).long() # L(n, 2)
+            idxs = ctr[:, 0] * pw + ctr[:, 1] # L(n)
+            key = pred_key[b].permute(1, 2, 0).contiguous() # F(ph, pw, c)
+            val = pred_val[b].permute(1, 2, 0).contiguous() # F(ph, pw, c)
             key = key.view(ph*pw, -1)[idxs] # F(n, c)
             pred_mask = (key.view(n, 1, 1, self.emb_size) - \
                 val.view(1, ph, pw, self.emb_size)).abs() # F(n, ph, pw, c)
@@ -160,7 +160,7 @@ class Detector(nn.Module):
         key = key.view(ph*pw, -1)[idxs] # F(n, c)
         pred_mask = (key.view(n, 1, 1, self.emb_size) - \
             val.view(1, ph, pw, self.emb_size)).abs() # F(n, ph, pw, c)
-        pred_mask = self.conv_metric(pred_mask.permute(0,3,1,2).contiguous() \
+        pred_mask = self.conv_metric(pred_mask.permute(0, 3, 1, 2).contiguous() \
             )[:, 0].sigmoid()
         # post
         pred_mask = F.interpolate(pred_mask.unsqueeze(0), size=(im_h, im_w),

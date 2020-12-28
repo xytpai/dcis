@@ -48,50 +48,26 @@ if getting_results:
         img_name = dataset.coco.loadImgs(dataset.ids[idx])[0]['file_name']
         img = Image.open(os.path.join(dataset.root_img, img_name))
         pred = inferencer.pred(img)
-        if pred['box'].shape[0] > 0:
-            ymin, xmin, ymax, xmax = pred['box'].split([1, 1, 1, 1], dim=1)
-            h, w = ymax - ymin + 1, xmax - xmin + 1
-            pred_box = torch.cat([xmin, ymin, w, h], dim=1)
-            if dataset.task == 'segm':
-                for box_id in range(pred_box.shape[0]):
-                    score = float(pred['score'][box_id])
-                    label = int(dataset.index_to_coco[int(pred['class'][box_id])])
-                    box = pred_box[box_id, :]
-                    rle = encode(np.asfortranarray(pred['mask'][box_id].numpy().astype(np.uint8)))
-                    rle['counts'] = rle['counts'].decode('ascii') # json.dump doesn't like bytes strings
-                    image_result = {
-                        'image_id'    : dataset.ids[idx],
-                        'category_id' : label,
-                        'score'       : score,
-                        'bbox'        : box.tolist(),
-                        'segmentation': rle,
-                    }
-                    results.append(image_result)
-            elif dataset.task == 'bbox': 
-                for box_id in range(pred_box.shape[0]):
-                    score = float(pred['score'][box_id])
-                    label = int(dataset.index_to_coco[int(pred['class'][box_id])])
-                    box = pred_box[box_id, :]
-                    image_result = {
-                        'image_id'    : dataset.ids[idx],
-                        'category_id' : label,
-                        'score'       : score,
-                        'bbox'        : box.tolist(),
-                    }
-                    results.append(image_result)
-            else:
-                raise NotImplementedError
+        if pred['score'].shape[0] > 0:
+            for obj_id in range(pred['mask'].shape[0]):
+                score = float(pred['score'][obj_id])
+                label = int(dataset.index_to_coco[int(pred['class'][obj_id])])
+                rle = encode(np.asfortranarray(pred['mask'][obj_id].numpy().astype(np.uint8)))
+                rle['counts'] = rle['counts'].decode('ascii') # json.dump doesn't like bytes strings
+                image_result = {
+                    'image_id'    : dataset.ids[idx],
+                    'category_id' : label,
+                    'score'       : score,
+                    'segmentation': rle,
+                }
+                results.append(image_result)
         print('step:%d/%d' % (idx, len(dataset.ids)), end='\r')
     json.dump(results, open(res_file, 'w'), indent=4)
-
 
 # evaluating
 print('evaluating...')
 coco_pred = dataset.coco.loadRes(res_file)
-if dataset.task == 'segm':
-    coco_eval = COCOeval(dataset.coco, coco_pred, eval_type)
-else:
-    coco_eval = COCOeval(dataset.coco, coco_pred, 'bbox')
+coco_eval = COCOeval(dataset.coco, coco_pred, eval_type)
 coco_eval.params.imgIds = dataset.ids
 coco_eval.evaluate()
 coco_eval.accumulate()
