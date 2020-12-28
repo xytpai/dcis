@@ -11,9 +11,8 @@ DETECTOR:
   NAME: "dcis_res"
   DEPTH: 50
   NUM_CLASS: 80
-  ALPHA: 0.1
-  BETA: 25
-  AXIS_RANGE: 32
+  EMB_SIZE: 32
+  NUMDETS: 100
   USE_DCN: False
 
 EVAL:

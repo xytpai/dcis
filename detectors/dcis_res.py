@@ -170,4 +170,4 @@ class Detector(nn.Module):
         pred_mask = F.interpolate(pred_mask, size=(ori_h, ori_w), 
                     mode='bilinear', align_corners=True)[0]
         pred_mask = (pred_mask>=self.mask_th).float()
-        return class_idx, score, pred_mask
+        return class_idx[:self.numdets], score[:self.numdets], pred_mask[:self.numdets]
