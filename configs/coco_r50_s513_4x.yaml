@@ -1,0 +1,54 @@
+DATASET:
+  NAME: "mscoco_common_segm"
+  ROOT_TRAIN: "/home1/xyt/dataset/coco17/images"
+  ROOT_EVAL: "/home1/xyt/dataset/coco17/images"
+  ROOT_TEST: "demo_images"
+  JSON_TRAIN: "/home1/xyt/dataset/coco17/annotations/instances_train2017.json"
+  JSON_EVAL: "/home1/xyt/dataset/coco17/annotations/instances_val2017.json"
+  JSON_TEST: "demo_images/instances_demo.json"
+
+DETECTOR:
+  NAME: "dcis_res"
+  DEPTH: 50
+  NUM_CLASS: 80
+  EMB_SIZE: 32
+  NUMDETS: 100
+  USE_DCN: False
+
+EVAL:
+  CLASS_TH: 0.05
+  MASK_TH: 0.5
+  MIN_SIZE: 513
+  MAX_SIZE: 1025
+  PAD_N: 128
+  DEVICE: 0
+
+TEST:
+  CLASS_TH: 0.3
+  MASK_TH: 0.5
+  MIN_SIZE: 513
+  MAX_SIZE: 1025
+  PAD_N: 128
+  DEVICE: 0
+
+TRAIN:
+  LOAD: False
+  PRETRAINED: True
+  SAVE: True
+  FREEZE_BN: True
+  FREEZE_STAGES: 1
+  MIN_SIZES: [-1, 500, 600]
+  MAX_SIZE: 1025
+  PAD_N: 128
+  NUM_EPOCH: 48
+  DEVICES: [1,2,3,4]
+  BATCH_SIZE: 16
+  NUM_WORKERS: 16
+  LR_BASE: 0.01
+  LR_GAMMA: 0.1
+  LR_SCHEDULE: [240000, 320000]
+  MOMENTUM: 0.9
+  WEIGHT_DECAY: 0.0001
+  GRAD_CLIP: 10
+  WARMUP_ITER: 1000
+  SEED: 1
