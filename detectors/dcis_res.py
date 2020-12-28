@@ -42,9 +42,9 @@ class Detector(nn.Module):
         nn.init.constant_(self.conv_cls.bias, _bias)
         # metric
         self.conv_metric = nn.Sequential(
-            nn.Conv2d(self.emb_size, self.emb_size, kernel_size=3, padding=1),
+            nn.Conv2d(self.emb_size, self.emb_size, kernel_size=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(self.emb_size, 1, kernel_size=3, padding=1))
+            nn.Conv2d(self.emb_size, 1, kernel_size=1))
         # loss_func
         self.loss_func_cls = neg_loss
         self.loss_func_mask = dice_loss
