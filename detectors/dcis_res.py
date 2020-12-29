@@ -21,6 +21,7 @@ class Detector(nn.Module):
                             use_dcn=self.cfg['DETECTOR']['USE_DCN'])
         self.neck       = FPN(self.backbone.out_channels, 256, 
                             top_mode=None)
+        self.norm_mask_loss = 8.0
         if self.mode == 'TRAIN' and self.cfg['TRAIN']['PRETRAINED']:
             self.backbone.load_pretrained_params()
         # head
@@ -122,7 +123,7 @@ class Detector(nn.Module):
                 mode='bilinear', align_corners=True)[0]
             loss_mask = self.loss_func_mask(pred_mask, label_mask_b).view(1)
             # loss
-            loss.append(loss_cls + loss_mask)
+            loss.append(loss_cls + self.norm_mask_loss * loss_mask)
         return torch.cat(loss)
 
     def _pred(self, locations, pred_cls, pred_key, pred_val, im_h, im_w):
