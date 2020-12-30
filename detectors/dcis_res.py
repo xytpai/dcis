@@ -146,7 +146,8 @@ class Detector(nn.Module):
         class_idx = class_idx + 1 # L(n)
         n = class_idx.shape[0]
         # throw
-        if n==0: device = class_idx.device
+        if n==0: 
+            device = class_idx.device
             return torch.zeros(0).long().to(device), \
                 torch.zeros(0).to(device), \
                 torch.zeros(0, ori_h, ori_w).to(device)
