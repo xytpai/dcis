@@ -21,19 +21,19 @@ class Detector(nn.Module):
                             use_dcn=self.cfg['DETECTOR']['USE_DCN'])
         self.neck       = FPN(self.backbone.out_channels, 256, 
                             top_mode=None)
-        self.norm_mask_loss = 8.0
+        self.norm_mask_loss = 3.0
         if self.mode == 'TRAIN' and self.cfg['TRAIN']['PRETRAINED']:
             self.backbone.load_pretrained_params()
         # head
         self.conv_emb = nn.Sequential(
             nn.Conv2d(256 + 2, 256, kernel_size=3, padding=1), 
-            nn.ReLU(inplace=True),
+            nn.GroupNorm(32, 256), nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, kernel_size=3, padding=1), 
-            nn.ReLU(inplace=True),
+            nn.GroupNorm(32, 256), nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, kernel_size=3, padding=1), 
-            nn.ReLU(inplace=True),
+            nn.GroupNorm(32, 256), nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, kernel_size=3, padding=1), 
-            nn.ReLU(inplace=True))
+            nn.GroupNorm(32, 256), nn.ReLU(inplace=True))
         self.conv_cls = nn.Conv2d(256, self.num_class, kernel_size=3, padding=1)
         self.conv_key = nn.Conv2d(256, self.emb_size, kernel_size=3, padding=1)
         self.conv_val = nn.Conv2d(256, self.emb_size, kernel_size=3, padding=1)
@@ -41,11 +41,6 @@ class Detector(nn.Module):
         pi = 0.01
         _bias = -math.log((1.0-pi)/pi)
         nn.init.constant_(self.conv_cls.bias, _bias)
-        # metric
-        self.conv_metric = nn.Sequential(
-            nn.Conv2d(self.emb_size, self.emb_size, kernel_size=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(self.emb_size, 1, kernel_size=1))
         # loss_func
         self.loss_func_cls = neg_loss
         self.loss_func_mask = dice_loss
@@ -115,10 +110,8 @@ class Detector(nn.Module):
             key = pred_key[b].permute(1, 2, 0).contiguous() # F(ph, pw, c)
             val = pred_val[b].permute(1, 2, 0).contiguous() # F(ph, pw, c)
             key = key.view(ph*pw, -1)[idxs] # F(n, c)
-            pred_mask = (key.view(n, 1, 1, self.emb_size) - \
-                val.view(1, ph, pw, self.emb_size)).abs() # F(n, ph, pw, c)
-            pred_mask = self.conv_metric(pred_mask.permute(0, 3, 1, 2).contiguous() \
-                )[:, 0].sigmoid()
+            pred_mask = (key.view(n, 1, 1, self.emb_size) * \
+                val.view(1, ph, pw, self.emb_size)).sum(dim=3).sigmoid()
             label_mask_b = F.interpolate(label_mask_b.unsqueeze(0), size=(ph, pw),
                 mode='bilinear', align_corners=True)[0]
             loss_mask = self.loss_func_mask(pred_mask, label_mask_b).view(1)
@@ -136,6 +129,10 @@ class Detector(nn.Module):
         self.mask_th      = self.cfg[self.mode]['MASK_TH']
         self.class_th     = self.cfg[self.mode]['CLASS_TH']
         batch_size, _, ph, pw = pred_cls.shape
+        valid_ymin, valid_xmin, valid_ymax, valid_xmax, ori_h, ori_w = \
+            float(locations[0]), float(locations[1]), \
+            float(locations[2]), float(locations[3]), \
+            int(locations[4]), int(locations[5])
         assert batch_size == 1
         # to class_idx, score
         pred_cls = pred_cls[0].sigmoid()
@@ -148,6 +145,11 @@ class Detector(nn.Module):
         class_idx = class_idx[m_posi]
         class_idx = class_idx + 1 # L(n)
         n = class_idx.shape[0]
+        # throw
+        if n==0: device = class_idx.device
+            return torch.zeros(0).long().to(device), \
+                torch.zeros(0).to(device), \
+                torch.zeros(0, ori_h, ori_w).to(device)
         # to mask
         stride = (im_h-1)//(ph-1)
         ys, xs = torch.meshgrid(
@@ -159,17 +161,11 @@ class Detector(nn.Module):
         key = pred_key[0].permute(1,2,0).contiguous() # F(ph, pw, c)
         val = pred_val[0].permute(1,2,0).contiguous() # F(ph, pw, c)
         key = key.view(ph*pw, -1)[idxs] # F(n, c)
-        pred_mask = (key.view(n, 1, 1, self.emb_size) - \
-            val.view(1, ph, pw, self.emb_size)).abs() # F(n, ph, pw, c)
-        pred_mask = self.conv_metric(pred_mask.permute(0, 3, 1, 2).contiguous() \
-            )[:, 0].sigmoid()
+        pred_mask = (key.view(n, 1, 1, self.emb_size) * \
+            val.view(1, ph, pw, self.emb_size)).sum(dim=3).sigmoid()
         # post
         pred_mask = F.interpolate(pred_mask.unsqueeze(0), size=(im_h, im_w),
             mode='bilinear', align_corners=True)
-        valid_ymin, valid_xmin, valid_ymax, valid_xmax, ori_h, ori_w = \
-            float(locations[0]), float(locations[1]), \
-            float(locations[2]), float(locations[3]), \
-            int(locations[4]), int(locations[5])
         pred_mask = pred_mask[:, :, int(valid_ymin):int(valid_ymax)+1, 
                         int(valid_xmin):int(valid_xmax)+1]
         pred_mask = F.interpolate(pred_mask, size=(ori_h, ori_w), 
