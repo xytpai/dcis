@@ -11,7 +11,6 @@ DETECTOR:
   NAME: "dcis_res"
   DEPTH: 50
   NUM_CLASS: 80
-  EMB_SIZE: 32
   NUMDETS: 100
   USE_DCN: False
 
@@ -37,7 +36,7 @@ TRAIN:
   SAVE: True
   FREEZE_BN: True
   FREEZE_STAGES: 1
-  MIN_SIZES: [-1, 500, 600]
+  MIN_SIZES: [-1, 513, 641]
   MAX_SIZE: 1025
   PAD_N: 128
   NUM_EPOCH: 48

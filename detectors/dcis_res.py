@@ -15,13 +15,12 @@ class Detector(nn.Module):
         self.mode = mode
         self.register_buffer('trained_log', torch.zeros(2).long())
         self.num_class  = self.cfg['DETECTOR']['NUM_CLASS']
-        self.emb_size   = self.cfg['DETECTOR']['EMB_SIZE']
         self.numdets    = self.cfg['DETECTOR']['NUMDETS']
         self.backbone   = ResNet(self.cfg['DETECTOR']['DEPTH'], 
                             use_dcn=self.cfg['DETECTOR']['USE_DCN'])
         self.neck       = FPN(self.backbone.out_channels, 256, 
                             top_mode=None)
-        self.norm_mask_loss = 3.0
+        self.norm_mask_loss = 1.0
         if self.mode == 'TRAIN' and self.cfg['TRAIN']['PRETRAINED']:
             self.backbone.load_pretrained_params()
         # head
@@ -35,8 +34,8 @@ class Detector(nn.Module):
             nn.Conv2d(256, 256, kernel_size=3, padding=1), 
             nn.GroupNorm(32, 256), nn.ReLU(inplace=True))
         self.conv_cls = nn.Conv2d(256, self.num_class, kernel_size=3, padding=1)
-        self.conv_y = nn.Conv2d(256, 160, kernel_size=3, padding=1)
-        self.conv_x = nn.Conv2d(256, 160, kernel_size=3, padding=1)
+        self.conv_y = nn.Conv2d(256, 176, kernel_size=3, padding=1)
+        self.conv_x = nn.Conv2d(256, 176, kernel_size=3, padding=1)
         # init conv_cls
         pi = 0.01
         _bias = -math.log((1.0-pi)/pi)
@@ -106,8 +105,8 @@ class Detector(nn.Module):
                 target.view(-1)).view(1)
             # loss_mask
             ctr = (label_reg_ctr_b/stride).long() / 2 # L(n, 2)
-            ctr_y, ctr_x = ctrp[:, 0], ctr[:, 1]
-            pred_mask pred_y[b][ctr_y].sigmoid() * pred_x[b][ctr_x].sigmoid()
+            ctr_y, ctr_x = ctr[:, 0], ctr[:, 1]
+            pred_mask = pred_y[b][ctr_y].sigmoid() * pred_x[b][ctr_x].sigmoid()
             label_mask_b = F.interpolate(label_mask_b.unsqueeze(0), size=(ph, pw),
                 mode='bilinear', align_corners=True)[0]
             loss_mask = self.loss_func_mask(pred_mask, label_mask_b).view(1)
@@ -148,18 +147,12 @@ class Detector(nn.Module):
                 torch.zeros(0).to(device), \
                 torch.zeros(0, ori_h, ori_w).to(device)
         # to mask
-        stride = (im_h-1)//(ph-1)
         ys, xs = torch.meshgrid(
             torch.arange(ph, device=class_idx.device), 
             torch.arange(pw, device=class_idx.device)) # F(ph, pw)
-        ctr_ys = ys[m_posi]
-        ctr_xs = xs[m_posi]
-        idxs = ctr_ys * pw + ctr_xs
-        key = pred_key[0].permute(1,2,0).contiguous() # F(ph, pw, c)
-        val = pred_val[0].permute(1,2,0).contiguous() # F(ph, pw, c)
-        key = key.view(ph*pw, -1)[idxs] # F(n, c)
-        pred_mask = (key.view(n, 1, 1, self.emb_size) * \
-            val.view(1, ph, pw, self.emb_size)).sum(dim=3).sigmoid()
+        ctr_y = ys[m_posi]//2
+        ctr_x = xs[m_posi]//2
+        pred_mask = pred_y[0][ctr_y].sigmoid() * pred_x[0][ctr_x].sigmoid()
         # post
         pred_mask = F.interpolate(pred_mask.unsqueeze(0), size=(im_h, im_w),
             mode='bilinear', align_corners=True)
