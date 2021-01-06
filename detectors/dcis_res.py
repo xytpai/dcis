@@ -35,8 +35,8 @@ class Detector(nn.Module):
             nn.Conv2d(256, 256, kernel_size=3, padding=1), 
             nn.GroupNorm(32, 256), nn.ReLU(inplace=True))
         self.conv_cls = nn.Conv2d(256, self.num_class, kernel_size=3, padding=1)
-        self.conv_key = nn.Conv2d(256, self.emb_size, kernel_size=3, padding=1)
-        self.conv_val = nn.Conv2d(256, self.emb_size, kernel_size=3, padding=1)
+        self.conv_y = nn.Conv2d(256, 160, kernel_size=3, padding=1)
+        self.conv_x = nn.Conv2d(256, 160, kernel_size=3, padding=1)
         # init conv_cls
         pi = 0.01
         _bias = -math.log((1.0-pi)/pi)
@@ -73,15 +73,15 @@ class Detector(nn.Module):
         bottom = F.interpolate(bottom, size=((bh-1)*2+1, (bw-1)*2+1), 
             mode='bilinear', align_corners=True)
         pred_cls = self.conv_cls(bottom)
-        pred_key = self.conv_key(bottom)
-        pred_val = self.conv_val(bottom)
+        pred_y = self.conv_y(bottom)
+        pred_x = self.conv_x(bottom)
         if label_cls is not None:
-            return self._loss(locations, pred_cls, pred_key, pred_val, im_h, im_w, 
+            return self._loss(locations, pred_cls, pred_y, pred_x, im_h, im_w, 
                 label_cls, label_reg, label_mask)
         else:
-            return self._pred(locations, pred_cls, pred_key, pred_val, im_h, im_w)
+            return self._pred(locations, pred_cls, pred_y, pred_x, im_h, im_w)
     
-    def _loss(self, locations, pred_cls, pred_key, pred_val, im_h, im_w, 
+    def _loss(self, locations, pred_cls, pred_y, pred_x, im_h, im_w, 
                 label_cls, label_reg, label_mask):
         loss = []
         batch_size, _, ph, pw = pred_cls.shape
@@ -105,13 +105,9 @@ class Detector(nn.Module):
             loss_cls = self.loss_func_cls(pred_cls[b].view(-1).sigmoid(), 
                 target.view(-1)).view(1)
             # loss_mask
-            ctr = (label_reg_ctr_b/stride).long() # L(n, 2)
-            idxs = ctr[:, 0] * pw + ctr[:, 1] # L(n)
-            key = pred_key[b].permute(1, 2, 0).contiguous() # F(ph, pw, c)
-            val = pred_val[b].permute(1, 2, 0).contiguous() # F(ph, pw, c)
-            key = key.view(ph*pw, -1)[idxs] # F(n, c)
-            pred_mask = (key.view(n, 1, 1, self.emb_size) * \
-                val.view(1, ph, pw, self.emb_size)).sum(dim=3).sigmoid()
+            ctr = (label_reg_ctr_b/stride).long() / 2 # L(n, 2)
+            ctr_y, ctr_x = ctrp[:, 0], ctr[:, 1]
+            pred_mask pred_y[b][ctr_y].sigmoid() * pred_x[b][ctr_x].sigmoid()
             label_mask_b = F.interpolate(label_mask_b.unsqueeze(0), size=(ph, pw),
                 mode='bilinear', align_corners=True)[0]
             loss_mask = self.loss_func_mask(pred_mask, label_mask_b).view(1)
@@ -119,7 +115,7 @@ class Detector(nn.Module):
             loss.append(loss_cls + self.norm_mask_loss * loss_mask)
         return torch.cat(loss)
 
-    def _pred(self, locations, pred_cls, pred_key, pred_val, im_h, im_w):
+    def _pred(self, locations, pred_cls, pred_y, pred_x, im_h, im_w):
         '''
         cls:   L(n)
         score: F(n)
