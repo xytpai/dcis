@@ -32,6 +32,8 @@ class Detector(nn.Module):
             nn.Conv2d(256, 256, kernel_size=3, padding=1), 
             nn.GroupNorm(32, 256), nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, kernel_size=3, padding=1), 
+            nn.GroupNorm(32, 256), nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1), 
             nn.GroupNorm(32, 256), nn.ReLU(inplace=True))
         self.conv_cls = nn.Conv2d(256, self.num_class, kernel_size=3, padding=1)
         self.conv_y = nn.Conv2d(256, 176, kernel_size=3, padding=1)
