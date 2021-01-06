@@ -20,7 +20,7 @@ class Detector(nn.Module):
                             use_dcn=self.cfg['DETECTOR']['USE_DCN'])
         self.neck       = FPN(self.backbone.out_channels, 256, 
                             top_mode=None)
-        self.norm_mask_loss = 1.0
+        self.norm_mask_loss = 3.0
         if self.mode == 'TRAIN' and self.cfg['TRAIN']['PRETRAINED']:
             self.backbone.load_pretrained_params()
         # head
