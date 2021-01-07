@@ -64,17 +64,18 @@ def prepare_loader(cfg, dataset, mode):
 def prepare_optimizer(cfg, detector, mode):
     assert mode == 'TRAIN'
     lr_base = cfg['TRAIN']['LR_BASE']
-    params = []
-    for key, value in detector.named_parameters():
-        if not value.requires_grad:
-            continue
-        _lr = lr_base
-        _weight_decay = cfg['TRAIN']['WEIGHT_DECAY']
-        if "bias" in key:
-            _lr = lr_base * 2
-            _weight_decay = 0
-        params += [{"params": [value], "lr": _lr, "weight_decay": _weight_decay}]
-    opt = torch.optim.SGD(params, lr=_lr, momentum=cfg['TRAIN']['MOMENTUM'])
+    # params = []
+    # for key, value in detector.named_parameters():
+    #     if not value.requires_grad:
+    #         continue
+    #     _lr = lr_base
+    #     _weight_decay = cfg['TRAIN']['WEIGHT_DECAY']
+    #     if "bias" in key:
+    #         _lr = lr_base * 2
+    #         _weight_decay = 0
+    #     params += [{"params": [value], "lr": _lr, "weight_decay": _weight_decay}]
+    # opt = torch.optim.SGD(params, lr=_lr, momentum=cfg['TRAIN']['MOMENTUM'])
+    opt = torch.optim.Adam(detector.parameters(), lr=lr_base, weight_decay=cfg['TRAIN']['WEIGHT_DECAY'])
     return opt
 
 

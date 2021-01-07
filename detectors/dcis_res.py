@@ -1,7 +1,7 @@
 import torch 
 import torch.nn as nn 
 import torch.nn.functional as F 
-import random, math
+import random, math, time
 from layers import *
 # TODO: choose backbone
 from detectors.backbones import *
@@ -53,6 +53,8 @@ class Detector(nn.Module):
         label_cls:  L(b, n)       0:pad
         label_reg:  F(b, n, 4)    yxyx
         '''
+        torch.cuda.synchronize()
+        self.start = time.time()
         batch_size, _, im_h, im_w = imgs.shape
         res = self.neck(self.backbone(imgs))
         _, _, bh, bw = res[0].shape
@@ -160,6 +162,8 @@ class Detector(nn.Module):
             mode='bilinear', align_corners=True)
         pred_mask = pred_mask[:, :, int(valid_ymin):int(valid_ymax)+1, 
                         int(valid_xmin):int(valid_xmax)+1]
+        torch.cuda.synchronize()
+        print(time.time()-self.start)
         pred_mask = F.interpolate(pred_mask, size=(ori_h, ori_w), 
                     mode='bilinear', align_corners=True)[0]
         pred_mask = (pred_mask>=self.mask_th).float()
